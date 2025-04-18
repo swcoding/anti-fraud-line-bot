@@ -8,8 +8,10 @@ import os
 # 1️⃣ 替換成你的 channel secret
 CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "YOUR_CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "YOUR_CHANNEL_SECRET")
+CHANNEL_SECRET = "f2bede08c2cf73c2614221c718eb3311"
 
 if __name__ == "__main__":
+    print("CHANNEL_SECRET", CHANNEL_SECRET)
 
     # 2️⃣ 這是模擬 webhook 的 JSON body
     body = {

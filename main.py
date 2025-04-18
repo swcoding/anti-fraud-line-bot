@@ -1,68 +1,57 @@
-import os
 from flask import Flask, request, abort
+import os
+from linebot.v3 import WebhookHandler
+from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, ReplyMessageRequest, TextMessage
+from linebot.v3.exceptions import InvalidSignatureError
+from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
-from google.cloud import secretmanager
-
-
-# 你可以把這個 Flask 應用包在雲函式的 handler 裡
 app = Flask(__name__)
 
-# 環境變數：可以在 GCP Cloud Functions 的 "環境變數" 頁面設定
-CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "YOUR_CHANNEL_ACCESS_TOKEN")
+CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN_LONGLIVED", "YOUR_CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "YOUR_CHANNEL_SECRET")
 
-line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
+configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
+api_client = ApiClient(configuration)
+messaging_api = MessagingApi(api_client)
 handler = WebhookHandler(CHANNEL_SECRET)
 
 @app.route("/")
-def hello_world():
-    """Example Hello World route."""
-    return f"Hello!"
+def hello():
+    return "Hello!"
 
 
-# 這裡和一般 Flask 專案做法類似，LINE Bot 的 Webhook endpoint 是 /callback
 @app.route("/callback", methods=['POST'])
 def callback():
+    # get X-Line-Signature header value
     signature = request.headers['X-Line-Signature']
-    body = request.get_data(as_text=True)
 
+    # get request body as text
+    body = request.get_data(as_text=True)
+    app.logger.info("Request body: " + body)
+
+    # handle webhook body
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
+        app.logger.info("Invalid signature. Please check your channel access token/channel secret.")
         abort(400)
 
     return 'OK'
 
-@handler.add(MessageEvent, message=TextMessage)
-def handle_text_message(event):
-    # 簡單的關鍵字檢測示範
-    suspicious_keywords = ["詐騙", "投資", "ATM", "中獎"]
+@handler.add(MessageEvent, message=TextMessageContent)
+def handle_message(event):
     user_text = event.message.text
+    
+    # 簡單的詐騙判斷邏輯
+    scam_keywords = ["匯款", "中獎", "點此連結", "投資"]
+    is_scam = any(keyword in user_text for keyword in scam_keywords)
 
-    for keyword in suspicious_keywords:
-        if keyword in user_text:
-            # 偵測到可疑訊息
-            reply_msg = f"「{user_text}」可能是詐騙訊息，請注意！"
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text=reply_msg)
-            )
-            break
+    if is_scam:
+        reply = f"{user_text} ⚠️ 這則訊息可能是詐騙，請提高警覺！"
 
-
-def get_secret(secret_name, project_id=None):
-    if not project_id:
-        project_id = os.environ["PROJECT_ID"]
-
-    client = secretmanager.SecretManagerServiceClient()
-    name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
-    response = client.access_secret_version(name=name)
-    my_secret_value = response.payload.data.decode("UTF-8")
-    return my_secret_value
-
+        message = TextMessage(text=reply)
+        body = ReplyMessageRequest(reply_token=event.reply_token, messages=[message])
+        messaging_api.reply_message(body)
 
 
 # ****雲端函式的進入點 (2nd gen)****
