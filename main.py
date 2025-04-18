@@ -4,6 +4,7 @@ from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, ReplyMessageRequest, TextMessage
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from models import is_fraudulent
 
 app = Flask(__name__)
 
@@ -45,13 +46,15 @@ def handle_message(event):
     # 簡單的詐騙判斷邏輯
     scam_keywords = ["匯款", "中獎", "點此連結", "投資"]
     is_scam = any(keyword in user_text for keyword in scam_keywords)
+    is_fraud = is_fraudulent(user_text)
 
-    if is_scam:
+    if is_scam or is_fraud:
         reply = f"{user_text} ⚠️ 這則訊息可能是詐騙，請提高警覺！"
 
         message = TextMessage(text=reply)
         body = ReplyMessageRequest(reply_token=event.reply_token, messages=[message])
         messaging_api.reply_message(body)
+
 
 
 # ****雲端函式的進入點 (2nd gen)****
